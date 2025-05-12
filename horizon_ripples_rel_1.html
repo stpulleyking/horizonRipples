@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>atunnel v2 – Horizon Flight with Ripple Spheres & Rings</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #87ceeb;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+  <style>
+    #ringMessage {
+      position: absolute;
+      top: 10%;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: sans-serif;
+      font-size: 48px;
+      font-weight: bold;
+      color: orange;
+      text-shadow: 2px 2px 4px black;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+  </style>
+  <script>
+    let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  </script>
+</head>
+<body>
+<div id="ringMessage">test</div>
+<div id="accuracyDisplay" style="position:fixed;top:44px;right:0;padding:4px 8px;font-family:monospace;font-size:14px;color:white;background:black;z-index:10000;">Accuracy: 0%</div>
+<div id="scoreCounter" style="position:fixed;top:22px;right:0;padding:4px 8px;font-family:monospace;font-size:14px;color:white;background:black;z-index:10000;">Score: 0</div>
+<div id="clickCounter" style="position:fixed;top:0;right:0;padding:4px 8px;font-family:monospace;font-size:14px;color:white;background:black;z-index:10000;">Clicks: 0</div>
+<div id="startOverlay" style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:black;color:white;display:flex;align-items:center;justify-content:center;z-index:9999;font-size:32px;font-family:sans-serif;cursor:pointer;">
+  Click the Orange Rings! Click to Start
+</div>
+<script>
+  document.getElementById('startOverlay').addEventListener('click', () => {
+    document.getElementById('startOverlay').style.display = 'none';
+    audioCtx.resume().then(() => {
+
+      const raycaster = new THREE.Raycaster();
+      const mouse = new THREE.Vector2();
+      window.score = 0;
+
+      function updateAccuracy() {
+        const accEl = document.getElementById('accuracyDisplay');
+        const accuracy = window.clickCount > 0 ? (window.score / window.clickCount * 100).toFixed(1) : '0';
+        if (accEl) accEl.textContent = 'Accuracy: ' + accuracy + '%';
+      }
+
+      function clickEvent(event) {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(ringGroup.children);
+
+        if (intersects.length > 0) {
+          const clicked = intersects[0].object;
+          if (clicked.visible !== false) {
+            clicked.visible = false;
+            window.score++;
+            const el = document.getElementById('scoreCounter');
+            if (el) el.textContent = 'Score: ' + window.score;
+            updateAccuracy();
+          }
+        }
+      }
+
+      window.clickCount = 0;
+      let clickCounterElement = document.getElementById('clickCounter');
+      requestAnimationFrame(() => {
+        renderer.domElement.addEventListener('click', (event) => {
+          clickEvent(event);
+          window.clickCount++;
+          if (clickCounterElement) {
+            clickCounterElement.textContent = 'Clicks: ' + window.clickCount;
+          }
+          updateAccuracy();
+          console.log("🎯 Counted click:", window.clickCount);
+        });
+      });
+
+      animate();
+    });
+  });
+</script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/stats.js@0.17.0/build/stats.min.js"></script>
+<script>
+  let flashCooldown = 0;
+  const words = ["cloud", "river", "syntax", "glow", "stone", "signal", "dusk", "orbit", "shade", "pulse", "echo", "thread", "spiral", "glyph", "crash", "drift"];
+  let cameraPos;
+
+  const scene = new THREE.Scene();
+  const stats = new Stats();
+  stats.showPanel(0);
+  document.body.appendChild(stats.dom);
+
+  scene.background = new THREE.Color(0x87ceeb);
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
+  scene.add(hemiLight);
+
+  const terrainWidth = 1000;
+  const terrainDepth = 1000;
+  const segments = 128;
+  const geometry = new THREE.PlaneGeometry(terrainWidth, terrainDepth, segments, segments);
+  const terrainMaterial = new THREE.MeshStandardMaterial({ color: 0x228B22, transparent: true, opacity: 0.9 });
+
+  for (let i = 0; i < geometry.attributes.position.count; i++) {
+    const x = geometry.attributes.position.getX(i);
+    const y = geometry.attributes.position.getY(i);
+    const z = Math.sin(x * 0.01) * 3 + Math.cos(y * 0.008) * 2 + Math.sin((x + y) * 0.005) * 1.5;
+    geometry.attributes.position.setZ(i, z * 10);
+  }
+  geometry.computeVertexNormals();
+
+  const terrain = new THREE.Mesh(geometry, terrainMaterial);
+  terrain.rotation.x = -Math.PI / 2;
+  terrain.position.y = -30;
+  scene.add(terrain);
+
+  const sun = new THREE.Mesh(
+    new THREE.SphereGeometry(5, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffdd77 })
+  );
+  sun.position.set(100, 100, -200);
+  scene.add(sun);
+
+  const sunLight = new THREE.PointLight(0xffeeaa, 1.5, 500);
+  sunLight.position.copy(sun.position);
+  scene.add(sunLight);
+
+  const points = [];
+  const numPoints = 200;
+  for (let i = 0; i < numPoints; i++) {
+    const t = i * 0.2;
+    points.push(new THREE.Vector3(
+      Math.sin(t) * 10,
+      Math.cos(t * 0.5) * 5,
+      -t * 15
+    ));
+  }
+
+  const curve = new THREE.CatmullRomCurve3(points);
+  let time = 0;
+  const speed = (0.0012 / 1000) * 100;
+
+  const sphereGroup = new THREE.Group();
+  const animatedSpheres = [];
+  const numCircles = 100;
+  const spheresPerCircle = 12;
+  const radius = 5;
+
+  for (let i = 0; i < numCircles; i++) {
+    const t = i / numCircles;
+    const center = curve.getPointAt(t).clone().add(new THREE.Vector3(0, -10, 0));
+    const tangent = curve.getTangentAt(t);
+    const up = new THREE.Vector3(0, 1, 0);
+    const axis = new THREE.Vector3().crossVectors(up, tangent).normalize();
+    const angle = Math.acos(up.dot(tangent));
+    const quaternion = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+
+    for (let j = 0; j < spheresPerCircle; j++) {
+      const theta = (j / spheresPerCircle) * Math.PI * 2;
+      const localPos = new THREE.Vector3(
+        Math.cos(theta) * radius,
+        Math.sin(theta) * radius,
+        0
+      );
+      const worldPos = localPos.clone().applyQuaternion(quaternion).add(center);
+
+      const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(0.5, 16, 16),
+        new THREE.MeshStandardMaterial({ color: 0xffffff })
+      );
+      sphere.position.copy(worldPos);
+      sphere.userData.phaseOffset = (i * spheresPerCircle + j) * 0.2;
+      sphereGroup.add(sphere);
+      animatedSpheres.push(sphere);
+    }
+  }
+
+  scene.add(sphereGroup);
+
+  const ringGroup = new THREE.Group();
+  const numRings = 50;
+  const ringRadius = 8;
+  const ringTube = 0.3;
+  const ringMaterial = new THREE.MeshStandardMaterial({ color: 0xff8800 });
+
+  for (let i = 0; i < numRings; i++) {
+    const t = i / numRings;
+    const center = curve.getPointAt(t);
+    const tangent = curve.getTangentAt(t);
+    const up = new THREE.Vector3(0, 1, 0);
+    const axis = new THREE.Vector3().crossVectors(up, tangent).normalize();
+    const angle = Math.acos(up.dot(tangent));
+    const quaternion = new THREE.Quaternion().setFromAxisAngle(axis, angle);
+
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(ringRadius, ringTube, 12, 48),
+      ringMaterial
+    );
+    ring.position.copy(center);
+    ring.quaternion.copy(quaternion);
+    ring.rotateX(Math.PI / 2);
+    ring.userData.triggered = false;
+    ringGroup.add(ring);
+  }
+
+  scene.add(ringGroup);
+
+  window.animate = function animate() {
+    stats.begin();
+    requestAnimationFrame(animate);
+
+    const now = Date.now() * 0.001;
+    for (const sphere of animatedSpheres) {
+      const value = Math.abs(Math.sin(now + sphere.userData.phaseOffset));
+      sphere.material.color.setRGB(0, 0, value);
+    }
+
+    const spheresPerRing = 12;
+    for (let i = 0; i < sphereGroup.children.length; i += spheresPerRing) {
+      const ring = sphereGroup.children.slice(i, i + spheresPerRing);
+      const center = ring.reduce((acc, s) => acc.add(s.position), new THREE.Vector3()).multiplyScalar(1 / spheresPerRing);
+      for (let s of ring) {
+        s.position.sub(center)
+         .applyAxisAngle(new THREE.Vector3(0, 0, 1), 0.01)
+         .applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.01)
+         .add(center);
+      }
+    }
+
+    time += speed;
+    if (time > 1) time = 0;
+
+    const pos = curve.getPointAt(time);
+    const look = curve.getPointAt((time + 0.01) % 1);
+    camera.position.copy(pos);
+    camera.lookAt(look);
+
+    if (flashCooldown > 0) {
+      flashCooldown--;
+      document.getElementById('ringMessage').style.opacity = 1;
+    } else {
+      document.getElementById('ringMessage').style.opacity = 0;
+    }
+
+    cameraPos = camera.position;
+    for (const ring of ringGroup.children) {
+      const distance = cameraPos.distanceTo(ring.position);
+      if (distance < 3 && !ring.userData.triggered) {
+        flashCooldown = 15;
+        ring.userData.triggered = true;
+
+        const word = words[Math.floor(Math.random() * words.length)];
+        document.getElementById('ringMessage').textContent = word;
+
+        var pitch = Math.max(0.5, Math.min(3.0,
+          word.split('').reduce((sum, c) => sum + c.charCodeAt(0), 0) / 300
+        ));
+
+        if (audioCtx.state !== 'closed') {
+          const root = pitch * 220;
+          const duration = 3.0;
+          window._measureCounter = (window._measureCounter || 0) + 1;
+          const measureType = ((window._measureCounter - 1) % 3) + 1;
+
+          let intervals;
+          if (measureType === 1) {
+            intervals = [0, 4, 7];
+          } else if (measureType === 2) {
+            intervals = [0, 3, 7];
+          } else {
+            intervals = [0, 4, 11];
+          }
+
+          intervals.map(semi => root * Math.pow(2, semi / 12)).forEach(freq => {
+            const osc = audioCtx.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+            osc.connect(gain).connect(audioCtx.destination);
+            osc.start(audioCtx.currentTime);
+            osc.stop(audioCtx.currentTime + duration);
+          });
+        }
+        break;
+      } else if (distance >= 6) {
+        ring.userData.triggered = false;
+      }
+    }
+
+    renderer.render(scene, camera);
+    stats.end();
+  }
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+</script>
+</body>
+</html>
